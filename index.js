@@ -28,7 +28,7 @@ export async function connectToMongoDB() {
 const mongoClient = await connectToMongoDB();
 const db = mongoClient.db("studio_space_db");
 const studioCollection = db.collection("studios");
-//const bookingCollection = db.collection("bookings");
+const bookingCollection = db.collection("bookings");
 
 /**-------- check authentication middleware -------- */
 const JWKS = createRemoteJWKSet(
@@ -126,6 +126,16 @@ app.patch("/studios/:id", async (req, res) => {
     { $set: data },
   );
   res.json(result);
+});
+
+/**
+ * Insert my booking data
+ * POST: "/bookings"
+ */
+app.post("/bookings", authenticate, async (req, res) => {
+  const data = req.body;
+  const result = await bookingCollection.insertOne(data);
+  res.send(result);
 });
 
 app.get("/", (req, res) => {
