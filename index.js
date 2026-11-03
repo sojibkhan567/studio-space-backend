@@ -1,7 +1,8 @@
-import express from 'express'
+import express from "express";
 import "dotenv/config";
 import cors from "cors";
-import { MongoClient, ObjectId } from 'mongodb';
+import { MongoClient, ObjectId } from "mongodb";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const PORT = process.env.PORT || 5000;
 
@@ -14,13 +15,13 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGODB_URI);
 
 export async function connectToMongoDB() {
-    try {
-        await client.connect();
-        console.log("You successfully connected to MongoDB!");
-        return client;
-    } catch (err) {
-        console.dir(err);
-    }
+  try {
+    await client.connect();
+    console.log("You successfully connected to MongoDB!");
+    return client;
+  } catch (err) {
+    console.dir(err);
+  }
 }
 
 //database cllection list
@@ -29,11 +30,51 @@ const db = mongoClient.db("studio_space_db");
 const studioCollection = db.collection("studios");
 //const bookingCollection = db.collection("bookings");
 
+/**-------- check authentication middleware -------- */
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`),
+);
+
+export const authenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Access denied. Token required.",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: process.env.BETTER_AUTH_URL,
+      audience: process.env.BETTER_AUTH_URL,
+    });
+
+    req.user = {
+      id: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      role: payload.role,
+    };
+
+    next();
+  } catch (error) {
+    console.error("JWT error:", error.code, error.message);
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token.",
+    });
+  }
+};
+
 /** POST: /studios */
-app.post("/studios", async (req, res) => {
-    const data = req.body;
-    const result = await studioCollection.insertOne(data);
-    res.send(result);
+app.post("/studios", authenticate, async (req, res) => {
+  const data = req.body;
+  const result = await studioCollection.insertOne(data);
+  res.send(result);
 });
 
 /**
@@ -41,8 +82,24 @@ app.post("/studios", async (req, res) => {
  * GET: "/studios"
  */
 app.get("/studios", async (req, res) => {
-    const result = await studioCollection.find().toArray();
-    res.send(result);
+  const result = await studioCollection.find().toArray();
+  res.send(result);
+});
+
+/**
+ * Get only authenticated user studion
+ * GET: /studios/me
+ */
+app.get("/studios/me", authenticate, async (req, res) => {
+  res.send("hhhhhh");
+});
+
+app.delete("/studios/:id", async (req, res) => {
+  const { id } = req.params;
+  const result = await studioCollection.deleteOne({
+    _id: new ObjectId(id),
+  });
+  res.json(result);
 });
 
 /**
@@ -50,17 +107,31 @@ app.get("/studios", async (req, res) => {
  * GET: "/studio/:id"
  */
 app.get("/studios/:id", async (req, res) => {
-    const { id } = req.params;
-    const result = await studioCollection.findOne({
-        _id: new ObjectId(id),
-    });
-    res.send(result);
+  const { id } = req.params;
+  const result = await studioCollection.findOne({
+    _id: new ObjectId(id),
+  });
+  res.send(result);
+});
+
+/**
+ * update studio details
+ * patch: /studio/:id
+ */
+app.patch("/studios/:id", async (req, res) => {
+  const { id } = req.params;
+  const data = req.body;
+  const result = await studioCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: data },
+  );
+  res.json(result);
 });
 
 app.get("/", (req, res) => {
-    res.send("hello world!")
+  res.send("hello world!");
 });
 
 app.listen(PORT, () => {
-    console.log(`The server is running on port:${PORT}`)
+  console.log(`The server is running on port:${PORT}`);
 });
