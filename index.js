@@ -110,6 +110,9 @@ app.get("/studios/me", authenticate, async (req, res) => {
   }
 });
 
+/**
+ * Dlete studio by id
+ */
 app.delete("/studios/:id", async (req, res) => {
   const { id } = req.params;
   const result = await studioCollection.deleteOne({
@@ -134,7 +137,7 @@ app.get("/studios/:id", async (req, res) => {
  * update studio details
  * patch: /studio/:id
  */
-app.patch("/studios/:id", async (req, res) => {
+app.patch("/studios/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   const data = req.body;
   const result = await studioCollection.updateOne(
@@ -191,6 +194,21 @@ app.get("/bookings/me", authenticate, async (req, res) => {
       message: error.message || "Failed to fetch bookings",
     });
   }
+});
+
+/**
+ * CANCEL BOOKING BY ID
+ * PATCH: "/bookings/:id/cancel"
+ */
+app.patch("/bookings/:id/cancel", authenticate, async (req, res) => {
+  const { id } = req.params;
+  const result = await bookingCollection.updateOne(
+    {
+      _id: new ObjectId(id),
+    },
+    { $set: { status: "cancelled" } },
+  );
+  res.json(result);
 });
 
 app.get("/", (req, res) => {
