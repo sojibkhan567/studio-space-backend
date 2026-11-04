@@ -71,17 +71,3 @@ Base URL: `http://localhost:5000`
 | POST   | `http://localhost:5000/bookings`            | Yes  | Create a booking (returns `409` if the time slot is taken) |
 | GET    | `http://localhost:5000/bookings/me`         | Yes  | Get bookings of the logged-in user                         |
 | PATCH  | `http://localhost:5000/bookings/:id/cancel` | Yes  | Cancel a booking                                           |
-
-## Example Requests
-
-### Get all studios
-
-```bash
-curl http://localhost:5000/studios
-```
-
-### Get a studio by ID
-
-```bash
-curl http://localhost:5000/studios/:id
-```
