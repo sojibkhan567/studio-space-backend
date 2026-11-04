@@ -70,7 +70,11 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-/** POST: /studios */
+/**------------ Studios API list route --------------- */
+/**
+ * Create a studios data
+ * POST: /studios
+ * */
 app.post("/studios", authenticate, async (req, res) => {
   const data = req.body;
   const result = await studioCollection.insertOne(data);
@@ -91,7 +95,19 @@ app.get("/studios", async (req, res) => {
  * GET: /studios/me
  */
 app.get("/studios/me", authenticate, async (req, res) => {
-  res.send("hhhhhh");
+  try {
+    const bookings = await studioCollection
+      .find({ "user.email": req.user.email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.status(200).send(bookings);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error || "Failed to fetch listing.",
+    });
+  }
 });
 
 app.delete("/studios/:id", async (req, res) => {
@@ -128,14 +144,53 @@ app.patch("/studios/:id", async (req, res) => {
   res.json(result);
 });
 
+/**--------------- ALL BOOKING LIST ROUTE -------------- */
 /**
  * Insert my booking data
  * POST: "/bookings"
  */
 app.post("/bookings", authenticate, async (req, res) => {
   const data = req.body;
+
+  const existingBookings = await bookingCollection.findOne({
+    studioId: data.studioId,
+    date: data.date,
+    status: { $in: ["pending", "confirmed"] },
+    startTime: { $lt: data.endTime },
+    endTime: { $gt: data.startTime },
+  });
+
+  if (existingBookings) {
+    return res.status(409).send({
+      success: false,
+      message: "This studio is already booked for the selected time.",
+    });
+  }
+
   const result = await bookingCollection.insertOne(data);
-  res.send(result);
+
+  res.status(201).send({
+    success: true,
+    insertedId: result.insertedId,
+    message: "Booking created successfully",
+  });
+});
+
+/** Get auth booking data */
+app.get("/bookings/me", authenticate, async (req, res) => {
+  try {
+    const bookings = await bookingCollection
+      .find({ userId: req.user.id })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.status(200).send(bookings);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message || "Failed to fetch bookings",
+    });
+  }
 });
 
 app.get("/", (req, res) => {
