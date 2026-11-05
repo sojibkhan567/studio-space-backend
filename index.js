@@ -4,7 +4,7 @@ import cors from "cors";
 import { MongoClient, ObjectId } from "mongodb";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
-//const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000;
 
 const app = express();
 
@@ -29,8 +29,9 @@ const mongoClient = await connectToMongoDB();
 const db = mongoClient.db("studio_space_db");
 const studioCollection = db.collection("studios");
 const bookingCollection = db.collection("bookings");
+const wishlistCollection = db.collection("wishlist");
 
-/**-------- check authentication middleware -------- */
+/**-------- Check authentication middleware -------- */
 const JWKS = createRemoteJWKSet(
   new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`),
 );
@@ -211,12 +212,183 @@ app.patch("/bookings/:id/cancel", authenticate, async (req, res) => {
   res.json(result);
 });
 
+/*------------------- WISHLIST ROUTE LIST --------------------*/
+// Add wishlist
+app.post("/wishlist", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { studioId } = req.body;
+
+    if (!studioId) {
+      return res.status(400).json({
+        success: false,
+        message: "Studio ID is required",
+      });
+    }
+
+    // Check duplicate
+    const existing = await wishlistCollection.findOne({
+      userId,
+      studioId,
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Studio already exists in wishlist",
+      });
+    }
+
+    const wishlist = {
+      userId,
+      studioId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const result = await wishlistCollection.insertOne(wishlist);
+
+    res.status(201).json({
+      success: true,
+      message: "Studio added to wishlist",
+      wishlist: {
+        _id: result.insertedId,
+        ...wishlist,
+      },
+    });
+  } catch (error) {
+    console.error("Add wishlist error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to add studio to wishlist",
+    });
+  }
+});
+
+// Get current user's wishlist
+app.get("/wishlist/me", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const wishlist = await wishlistCollection
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      wishlist,
+    });
+  } catch (error) {
+    console.error("Get wishlist error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to get wishlist",
+    });
+  }
+});
+
+// Get current user's wishlist
+app.get("/wishlist", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const wishlist = await wishlistCollection
+      .aggregate([
+        {
+          $match: { userId },
+        },
+        {
+          $addFields: {
+            studioObjectId: {
+              $toObjectId: "$studioId",
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: "studios",
+            localField: "studioObjectId",
+            foreignField: "_id",
+            as: "studio",
+          },
+        },
+        {
+          $unwind: "$studio",
+        },
+        {
+          $replaceRoot: {
+            newRoot: "$studio",
+          },
+        },
+        {
+          $project: {
+            studioObjectId: 0,
+          },
+        },
+        {
+          $sort: {
+            createdAt: -1,
+          },
+        },
+      ])
+      .toArray();
+
+    res.json({
+      success: true,
+      wishlist,
+    });
+  } catch (error) {
+    console.error("Get wishlist error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to get wishlist",
+    });
+  }
+});
+
+// Remove wishlist
+app.delete("/wishlist/:studioId", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { studioId } = req.params;
+
+    const result = await wishlistCollection.deleteOne({
+      userId,
+      studioId,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Studio not found in wishlist",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Studio removed from wishlist",
+    });
+  } catch (error) {
+    console.error("Remove wishlist error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove studio from wishlist",
+    });
+  }
+});
+
+/*---------- Test server api -----------*/
 app.get("/", (req, res) => {
   res.send("hello world!");
 });
 
-// app.listen(PORT, () => {
-//   console.log(`The server is running on port:${PORT}`);
-// });
+app.listen(PORT, () => {
+  console.log(`The server is running on port:${PORT}`);
+});
 
 export default app;
